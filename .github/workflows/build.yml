@@ -47,18 +47,25 @@ jobs:
       - name: Download Node.js runtime
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force runtime | Out-Null
           Invoke-WebRequest "https://nodejs.org/dist/v20.18.0/win-x64/node.exe" -OutFile runtime/node.exe
           Write-Output "node.exe: $([math]::Round((Get-Item runtime/node.exe).Length/1MB)) MB"
 
-      # ffmpeg（可选，HEVC 图片解码）
+      # ffmpeg（可选，HEVC 图片解码失败不影响基本导出）
       - name: Download ffmpeg
         shell: pwsh
+        continue-on-error: true
         run: |
+          New-Item -ItemType Directory -Force resources/bin | Out-Null
           Invoke-WebRequest "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "$env:TEMP/ffmpeg.zip"
           Expand-Archive "$env:TEMP/ffmpeg.zip" "$env:TEMP/ffmpeg" -Force
           $exe = Get-ChildItem "$env:TEMP/ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
-          Copy-Item $exe.FullName resources/bin/ffmpeg.exe -Force
-          Write-Output "ffmpeg.exe: $([math]::Round((Get-Item resources/bin/ffmpeg.exe).Length/1MB)) MB"
+          if ($exe) {
+            Copy-Item $exe.FullName resources/bin/ffmpeg.exe -Force
+            Write-Output "ffmpeg.exe: $([math]::Round((Get-Item resources/bin/ffmpeg.exe).Length/1MB)) MB"
+          } else {
+            Write-Output "ffmpeg not found in archive, skipping (image HEVC fallback only)"
+          }
 
       # PyInstaller 打包
       - name: Build

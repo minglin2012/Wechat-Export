@@ -38,6 +38,10 @@ def main():
     ok &= check_file(os.path.join(HERE, "runtime", "WCDB.dll"), "WCDB.dll")
     ok &= check_file(os.path.join(HERE, "scripts", "node_modules", "koffi"), "koffi")
     ok &= check_file(os.path.join(HERE, "scripts", "node_modules", "fzstd"), "fzstd")
+    # ffmpeg 可选
+    ffmpeg = os.path.join(HERE, "resources", "bin", "ffmpeg.exe")
+    if not os.path.exists(ffmpeg):
+        print("  [OPT] ffmpeg.exe (HEVC 图片解码备选，不影响基本导出)")
     if not ok:
         print("\n  [!] 缺少依赖，请先运行 CI 准备步骤或手动下载")
         print("  本地开发: 手动复制 electron/ runtime/node.exe 等文件")
