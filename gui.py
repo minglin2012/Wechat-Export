@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """微信聊天记录导出工具 — 图形界面"""
 
-import os, sys, json, threading, datetime
+import os, sys, json, threading, datetime, subprocess, ctypes
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -10,11 +10,29 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from export import (
-    load_key, extract_key, WCDB, load_config, should_skip,
+    load_key, WCDB, load_config, should_skip,
     sanitize, export_one, KEY_FILE, CONFIG_FILE, OUTPUT_DIR, _detect_dd,
+    SCRIPTS, RUNTIME, DATA_DIR,
 )
 
 SELECTION_FILE = os.path.join(HERE, "session_selection.json")
+
+# ── 管理员提权 ──
+def _ensure_admin():
+    """如果不是管理员，重新以管理员身份启动当前程序"""
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return
+    if getattr(sys, "frozen", False):
+        exe = sys.executable
+        args = sys.argv[1:] if len(sys.argv) > 1 else []
+    else:
+        exe = sys.executable
+        args = [sys.argv[0]] + sys.argv[1:]
+    params = " ".join(f'"{a}"' for a in args)
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, params, None, 1)
+    if ret > 32:
+        sys.exit(0)
+    # 用户拒绝了 UAC 提权，继续以普通权限运行（部分功能不可用）
 
 
 class App:
@@ -149,17 +167,82 @@ class App:
         threading.Thread(target=self._get_key_thread, daemon=True).start()
 
     def _get_key_thread(self):
+        """管理员权限下直接用 subprocess，读取实时输出并在 GUI 显示"""
         try:
-            k = extract_key()
-            with open(KEY_FILE, "w") as f: f.write(k)
-            self.root.after(0, self._refresh_key_status)
-            self.root.after(0, lambda: self._log("密钥获取成功"))
-            self.root.after(0, lambda: messagebox.showinfo("成功",
-                f"密钥已保存到:\n{KEY_FILE}\n\n{k[:16]}..."))
+            # 找 node 和脚本
+            import shutil
+            node = os.path.join(RUNTIME, "node.exe")
+            if not os.path.exists(node):
+                node = shutil.which("node") or shutil.which("node.exe") or ""
+            js = os.path.join(SCRIPTS, "get_key.js")
+            if not node or not os.path.exists(js):
+                raise RuntimeError("找不到运行时")
+
+            # 清除旧状态
+            sf = os.path.join(DATA_DIR, "key_status.txt")
+            for f in [sf, KEY_FILE]:
+                if os.path.exists(f): os.remove(f)
+
+            self.root.after(0, lambda: self.key_status_var.set("等待微信关闭..."))
+            self.root.after(0, lambda: self._log("请关闭微信，然后打开微信并登录"))
+
+            # 直接启动 node（管理员权限，无需 ShellExecuteW）
+            proc = subprocess.Popen(
+                [node, js, DATA_DIR],
+                cwd=SCRIPTS,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+            )
+
+            smap = {"started": "已启动", "dll_found": "找到 DLL",
+                    "dll_loaded": "DLL 加载", "waiting_close": "等待微信关闭...",
+                    "waiting_start": "等待微信启动——打开微信登录！",
+                    "injecting": "注入 Hook...", "hook_ok": "Hook 成功，等待捕获...",
+                    "polling": "等待密钥...", "captured": "已捕获!",
+                    "dll_not_found": "找不到 wx_key.dll", "hook_failed": "Hook 失败",
+                    "timeout_poll": "超时"}
+
+            # 读取输出 + 轮询密钥文件
+            for _ in range(180):
+                # 读一行输出
+                line = proc.stdout.readline()
+                if line:
+                    line = line.strip()
+                    if line:
+                        self.root.after(0, lambda t=line: self.key_status_var.set(t[:60]))
+                        self.root.after(0, lambda t=line: self._log(t[:100]))
+                        # 检查状态文件
+                        for k, v in smap.items():
+                            if k in line:
+                                self.root.after(0, lambda m=v: self.key_status_var.set(m))
+                                break
+
+                # 检查是否已有密钥
+                if os.path.exists(KEY_FILE):
+                    k = open(KEY_FILE).read().strip()
+                    if len(k) == 64:
+                        self.root.after(0, self._refresh_key_status)
+                        self.root.after(0, lambda: self._log("密钥获取成功"))
+                        self.root.after(0, lambda: messagebox.showinfo("成功",
+                            f"密钥已保存到:\n{KEY_FILE}\n\n{k[:16]}..."))
+                        try: proc.terminate()
+                        except Exception: pass
+                        return
+
+                if proc.poll() is not None:
+                    break
+                # 不 sleep——readline 本身阻塞
+
+            # 超时
+            try: proc.terminate()
+            except Exception: pass
+            raise RuntimeError("获取密钥超时（180s），请确认微信已登录")
+
         except Exception as e:
             self.root.after(0, lambda: self._log(f"获取失败: {e}"))
+            self.root.after(0, lambda: self.key_status_var.set("❌ 未获取密钥"))
             self.root.after(0, lambda: messagebox.showerror("获取失败",
-                f"{e}\n\n请确保:\n1. 完全关闭微信\n2. 在弹出的控制台窗口提示后打开微信登录\n3. 如果没弹出窗口，检查杀毒软件是否拦截"))
+                f"{e}\n\n请确保:\n1. 以管理员身份运行本程序\n2. 先关闭微信再重新打开并登录"))
         finally:
             self.root.after(0, lambda: self.key_btn.config(state=tk.NORMAL))
 
@@ -628,6 +711,7 @@ class App:
 
 
 def main():
+    _ensure_admin()
     app = App()
     app.root.mainloop()
 
