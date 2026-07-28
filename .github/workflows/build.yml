@@ -24,11 +24,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: npm install (koffi, fzstd, electron)
+      - name: npm install
         working-directory: scripts
-        run: |
-          npm install
-          npm install electron
+        run: npm install
 
       # 提取 Electron 运行时
       - name: Copy Electron runtime

@@ -40,7 +40,7 @@ def setup_electron():
 
     scripts = os.path.join(HERE, "scripts")
     # npm install electron
-    run(["npm", "install", "electron"], cwd=scripts, shell=True)
+    run(["npm", "install"], cwd=scripts, shell=True)  # devDependencies includes electron@24.14.0
 
     # 复制 electron 核心文件
     src = os.path.join(scripts, "node_modules", "electron", "dist")
