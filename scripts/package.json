@@ -5,6 +5,6 @@
     "koffi": "^3.0.2"
   },
   "devDependencies": {
-    "electron": "24.14.0"
+    "electron": "24.8.8"
   }
 }
