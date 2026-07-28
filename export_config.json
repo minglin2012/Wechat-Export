@@ -1,0 +1,14 @@
+{
+  "blacklist": {
+    "wxids": [],
+    "names": [],
+    "keywords": [],
+    "skip_groups": true,
+    "skip_official": true
+  },
+  "whitelist": {
+    "wxids": [],
+    "names": [],
+    "keywords": []
+  }
+}

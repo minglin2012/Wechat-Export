@@ -1,0 +1,85 @@
+name: Build Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install pyinstaller openpyxl fpdf2
+
+      # Node.js + npm install
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm install (koffi, fzstd, electron)
+        working-directory: scripts
+        run: |
+          npm install
+          npm install electron
+
+      # 提取 Electron 运行时
+      - name: Copy Electron runtime
+        shell: pwsh
+        run: |
+          $src = "scripts/node_modules/electron/dist"
+          New-Item -ItemType Directory -Force electron/locales | Out-Null
+          @("electron.exe","chrome_100_percent.pak","chrome_200_percent.pak","resources.pak",
+            "icudtl.dat","snapshot_blob.bin","v8_context_snapshot.bin","vk_swiftshader_icd.json",
+            "d3dcompiler_47.dll","ffmpeg.dll","libEGL.dll","libGLESv2.dll",
+            "vk_swiftshader.dll","vulkan-1.dll") | % {
+            Copy-Item "$src/$_" electron/ -ErrorAction SilentlyContinue
+          }
+          Copy-Item "$src/locales/en-US.pak","$src/locales/zh-CN.pak" electron/locales/ -ErrorAction SilentlyContinue
+          Write-Output "Electron: $([math]::Round((Get-ChildItem electron -Recurse | Measure-Object Length -Sum).Sum/1MB)) MB"
+
+      # Node.js 运行时（用于密钥捕获）
+      - name: Download Node.js runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://nodejs.org/dist/v20.18.0/win-x64/node.exe" -OutFile runtime/node.exe
+          Write-Output "node.exe: $([math]::Round((Get-Item runtime/node.exe).Length/1MB)) MB"
+
+      # ffmpeg（可选，HEVC 图片解码）
+      - name: Download ffmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "$env:TEMP/ffmpeg.zip"
+          Expand-Archive "$env:TEMP/ffmpeg.zip" "$env:TEMP/ffmpeg" -Force
+          $exe = Get-ChildItem "$env:TEMP/ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $exe.FullName resources/bin/ffmpeg.exe -Force
+          Write-Output "ffmpeg.exe: $([math]::Round((Get-Item resources/bin/ffmpeg.exe).Length/1MB)) MB"
+
+      # PyInstaller 打包
+      - name: Build
+        run: python build.py
+
+      # ZIP
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/WeChatExport/* -DestinationPath WeChatExport.zip
+          Write-Output "ZIP: $([math]::Round((Get-Item WeChatExport.zip).Length/1MB)) MB"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WeChatExport
+          path: WeChatExport.zip
+
+      # GitHub Release（仅 tag 推送时）
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: WeChatExport.zip
+          generate_release_notes: true

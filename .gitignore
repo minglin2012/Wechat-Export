@@ -1,0 +1,23 @@
+# 构建产物
+dist/
+build/
+__pycache__/
+*.pyc
+*.spec
+
+# 运行时大文件（CI 中自动下载）
+electron/
+runtime/node.exe
+resources/bin/ffmpeg.exe
+
+# npm
+scripts/node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# 用户数据
+session_selection.json
+*.log
+session_selection*.json
