@@ -27,10 +27,26 @@ EXPORTERS = os.path.join(HERE, "exporters")
 RESOURCES = os.path.join(HERE, "resources")
 sys.path.insert(0, EXPORTERS)
 
-OUT = os.path.join(os.environ.get("USERPROFILE", HERE), "Desktop", "wx_export")
-KEY_FILE = os.path.join(OUT, "key.txt")
+# 数据和输出目录（软件目录下，便携设计）
+DATA_DIR = os.path.join(HERE, "data")
+OUTPUT_DIR = os.path.join(HERE, "output")
+KEY_FILE = os.path.join(DATA_DIR, "key.txt")
 CONFIG_FILE = os.path.join(HERE, "export_config.json")
-os.makedirs(OUT, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# 兼容旧版：从桌面 wx_export 迁移密钥
+_OLD_OUT = os.path.join(os.environ.get("USERPROFILE", HERE), "Desktop", "wx_export")
+_OLD_KEY = os.path.join(_OLD_OUT, "key.txt")
+if os.path.exists(_OLD_KEY) and not os.path.exists(KEY_FILE):
+    import shutil as _shutil
+    _shutil.copy2(_OLD_KEY, KEY_FILE)
+    try:
+        _OLD_IMG = os.path.join(_OLD_OUT, "image_key.json")
+        if os.path.exists(_OLD_IMG):
+            _shutil.copy2(_OLD_IMG, os.path.join(DATA_DIR, "image_key.json"))
+    except Exception:
+        pass
 
 # ---- 工具 ----
 def sanitize(name):
@@ -74,25 +90,29 @@ def load_key():
     return ""
 
 def extract_key():
+    """获取密钥，失败时抛 RuntimeError 而非 exit（兼容 GUI）"""
     print("\n" + "=" * 56)
     print("  获取微信数据库密钥")
     print("=" * 56)
-    print("  1. 关闭微信 → 2. 按回车 → 3. 打开微信登录")
-    input("\n  按回车开始...")
+    print("  1. 关闭微信 -> 2. 按回车 -> 3. 打开微信登录")
+    print("  正在启动密钥捕获...")
     node = find_node()
     js = os.path.join(SCRIPTS, "get_key.js")
     if not node or not os.path.exists(js):
-        print(f"  X 找不到运行时"); sys.exit(1)
-    sf = os.path.join(OUT, "key_status.txt")
+        raise RuntimeError(f"找不到运行时: node={node}, js={js}")
+    sf = os.path.join(DATA_DIR, "key_status.txt")
     for f in [sf, KEY_FILE]:
         if os.path.exists(f): os.remove(f)
     print(f"  [*] {node}")
-    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", node, f'"{js}"', None, 1)
+    # 用 cmd /c start 启动，确保弹出独立控制台窗口显示提示
+    cmd = f'cmd /c start "WeChat Key Extraction" "{node}" "{js}"'
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe",
+        f'/c start "WeChat Key" cmd /c "chcp 65001 >nul && \"{node}\" \"{js}\" \"{DATA_DIR}\" && pause"', None, 1)
     if ret <= 32:
-        r = subprocess.run([node, js], capture_output=True, text=True, timeout=10)
-        print(f"  X 提权失败: {(r.stdout+r.stderr)[:200]}"); sys.exit(1)
+        # 回退：普通权限运行
+        subprocess.Popen([node, js], creationflags=subprocess.CREATE_NEW_CONSOLE)
     smap = {"started":"启动","dll_found":"找到DLL","dll_loaded":"DLL加载",
-            "waiting_close":"等待微信关闭...","waiting_start":"等待微信启动--现在打开微信登录！",
+            "waiting_close":"等待微信关闭...","waiting_start":"等待微信启动 -- 现在打开微信登录！",
             "injecting":"注入Hook...","hook_ok":"Hook成功","polling":"等待密钥...",
             "captured":"已捕获!","dll_not_found":"找不到wx_key.dll",
             "hook_failed":"Hook失败","timeout_poll":"超时"}
@@ -109,7 +129,7 @@ def extract_key():
                 if msg != last: print(f"  [*] {msg}"); last = msg
             except: pass
         time.sleep(1)
-    print("\n  X 超时"); sys.exit(1)
+    raise RuntimeError("获取密钥超时 (150s)")
 
 # ---- WCDB 服务 ----
 class WCDB:
@@ -265,7 +285,7 @@ def _decrypt_imgs(db, imgs):
     try: resolved = db.resolve_images([{"md5":m} for m in md5s])
     except: resolved = []
     pmap = {r.get("md5",""): r.get("path","") for r in resolved if r.get("path")}
-    ikf = os.path.join(OUT, "image_key.json")
+    ikf = os.path.join(DATA_DIR, "image_key.json")
     ik = {}
     if os.path.exists(ikf):
         try: ik = json.load(open(ikf,encoding="utf-8"))
@@ -424,7 +444,7 @@ def cmd_export(args):
     if skn: print(f"过滤跳过: {skn} 个")
     if not filtered: print("无会话（全被过滤），先用 --list 查看"); db.stop(); return
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = args.output or os.path.join(OUT, f"export_{ts}")
+    out = args.output or os.path.join(OUTPUT_DIR, f"export_{ts}")
     os.makedirs(out, exist_ok=True)
     my_wxid = ""
     if dd:

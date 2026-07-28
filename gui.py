@@ -11,7 +11,7 @@ sys.path.insert(0, HERE)
 
 from export import (
     load_key, extract_key, WCDB, load_config, should_skip,
-    sanitize, export_one, KEY_FILE, CONFIG_FILE, OUT, _detect_dd,
+    sanitize, export_one, KEY_FILE, CONFIG_FILE, OUTPUT_DIR, _detect_dd,
 )
 
 SELECTION_FILE = os.path.join(HERE, "session_selection.json")
@@ -153,10 +153,13 @@ class App:
             k = extract_key()
             with open(KEY_FILE, "w") as f: f.write(k)
             self.root.after(0, self._refresh_key_status)
-            self.root.after(0, lambda: self._log("✅ 密钥获取成功"))
-            self.root.after(0, lambda: messagebox.showinfo("成功", f"密钥: {k[:16]}..."))
+            self.root.after(0, lambda: self._log("密钥获取成功"))
+            self.root.after(0, lambda: messagebox.showinfo("成功",
+                f"密钥已保存到:\n{KEY_FILE}\n\n{k[:16]}..."))
         except Exception as e:
-            self.root.after(0, lambda: self._log(f"❌ 失败: {e}"))
+            self.root.after(0, lambda: self._log(f"获取失败: {e}"))
+            self.root.after(0, lambda: messagebox.showerror("获取失败",
+                f"{e}\n\n请确保:\n1. 完全关闭微信\n2. 在弹出的控制台窗口提示后打开微信登录\n3. 如果没弹出窗口，检查杀毒软件是否拦截"))
         finally:
             self.root.after(0, lambda: self.key_btn.config(state=tk.NORMAL))
 
@@ -525,7 +528,7 @@ class App:
         df = ttk.Frame(f)
         df.pack(fill=tk.X, pady=5)
         ttk.Label(df, text="输出目录:", width=10).pack(side=tk.LEFT)
-        self.out_var = tk.StringVar(value=OUT)
+        self.out_var = tk.StringVar(value=OUTPUT_DIR)
         ttk.Entry(df, textvariable=self.out_var, width=55).pack(side=tk.LEFT, padx=5)
         ttk.Button(df, text="浏览", command=lambda: self.out_var.set(
             filedialog.askdirectory(initialdir=self.out_var.get()) or self.out_var.get()

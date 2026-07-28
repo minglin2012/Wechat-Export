@@ -13,8 +13,11 @@ const DLL_CANDIDATES = [
     path.join(SELF, '..', 'dll', 'wx_key.dll'),
     path.join(SELF, '..', 'APP', 'WeChatExport', 'dll', 'wx_key.dll'),
 ];
-const OUT = path.join(process.env.USERPROFILE || SELF, 'Desktop', 'wx_export');
+// 输出目录：命令行参数 > USERPROFILE > 脚本所在目录
+const OUT = process.argv[2] || path.join(process.env.USERPROFILE || SELF, 'Desktop', 'wx_export');
 const STATUS_FILE = path.join(OUT, 'key_status.txt');
+const KEY_OUT = path.join(OUT, 'key.txt');
+const IMG_KEY_OUT = path.join(OUT, 'image_key.json');
 fs.mkdirSync(OUT, { recursive: true });
 function setStatus(s) { try { fs.writeFileSync(STATUS_FILE, s); } catch(e) {} }
 
@@ -155,7 +158,7 @@ async function main() {
         if (api.pollKey(buf, buf.length)) {
             const key = buf.toString('ascii').substring(0, 64);
             if (/^[0-9a-f]{64}$/i.test(key)) {
-                fs.writeFileSync(path.join(OUT, 'key.txt'), key);
+                fs.writeFileSync(KEY_OUT, key);
                 console.log(`\n[KEY] ✅ 成功: ${key.substring(0, 16)}...`);
 
                 // 获取图片密钥 (通过 wx_key.dll 提取)
@@ -166,7 +169,7 @@ async function main() {
                         const str = imgBuf.toString('utf-8').replace(/\0/g, '').trim();
                         if (str) {
                             const imgData = JSON.parse(str);
-                            fs.writeFileSync(path.join(OUT, 'image_key.json'), JSON.stringify(imgData, null, 2));
+                            fs.writeFileSync(IMG_KEY_OUT, JSON.stringify(imgData, null, 2));
                             console.log(`[KEY] ✅ 图片密钥已保存`);
                         }
                     }
