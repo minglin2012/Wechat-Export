@@ -97,7 +97,7 @@ def main():
             except Exception: pass
 
     print(f"\n  Done! Output: {DIST}  ({total // 1024 // 1024} MB)")
-    print(f"  {os.path.join(DIST, '启动.bat')}")
+    print(f"  Launcher: {os.path.join(DIST, 'launch.bat')}")
 
 
 if __name__ == "__main__":
