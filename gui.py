@@ -134,20 +134,36 @@ class App:
         f.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(f, text="微信数据库密钥", font=("", 16, "bold")).pack(anchor=tk.W)
-        ttk.Label(f, text="密钥用于解密微信的加密数据库，一次获取后可重复使用。").pack(anchor=tk.W, pady=(5, 20))
+        ttk.Label(f, text="密钥用于解密微信的加密数据库，一次获取后可重复使用。").pack(anchor=tk.W, pady=(5, 10))
 
+        # 密钥状态 + 按钮
+        row1 = ttk.Frame(f)
+        row1.pack(fill=tk.X, pady=5)
         self.key_status_var = tk.StringVar(value="未检测")
-        ttk.Label(f, textvariable=self.key_status_var, font=("Consolas", 11), foreground="gray").pack(anchor=tk.W)
+        ttk.Label(row1, textvariable=self.key_status_var, font=("Consolas", 11), foreground="gray").pack(side=tk.LEFT)
+        self.key_btn = ttk.Button(row1, text="  获取密钥  ", command=self._do_get_key)
+        self.key_btn.pack(side=tk.RIGHT)
 
-        self.key_btn = ttk.Button(f, text="🔑 获取密钥", command=self._do_get_key, width=18)
-        self.key_btn.pack(anchor=tk.W, pady=(15, 5))
+        ttk.Label(f, text="操作步骤：1.关闭微信 → 2.点击获取密钥 → 3.打开微信并登录",
+                  foreground="gray").pack(anchor=tk.W, pady=(5, 5))
 
-        ttk.Label(f, text="操作步骤：", font=("", 10, "bold")).pack(anchor=tk.W, pady=(30, 5))
-        for s in ["1. 关闭微信电脑端（右键系统托盘 → 退出）",
-                  "2. 点击「获取密钥」按钮",
-                  "3. 在弹出的管理员窗口中看到提示后，打开微信并登录",
-                  "4. 程序自动捕获密钥并保存"]:
-            ttk.Label(f, text="    " + s).pack(anchor=tk.W)
+        # 输出区域
+        out_frame = ttk.LabelFrame(f, text="运行日志", padding=5)
+        out_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.key_output = tk.Text(out_frame, wrap=tk.WORD, height=20,
+                                   font=("Consolas", 10), bg="#1e1e1e", fg="#d4d4d4",
+                                   insertbackground="white")
+        key_scroll = ttk.Scrollbar(out_frame, command=self.key_output.yview)
+        self.key_output.configure(yscrollcommand=key_scroll.set)
+        self.key_output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        key_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.key_output.config(state=tk.DISABLED)
+
+    def _key_append(self, text):
+        self.key_output.config(state=tk.NORMAL)
+        self.key_output.insert(tk.END, text + "\n")
+        self.key_output.see(tk.END)
+        self.key_output.config(state=tk.DISABLED)
 
     def _refresh_key_status(self):
         k = load_key()
@@ -164,12 +180,17 @@ class App:
             return
         self.key_btn.config(state=tk.DISABLED)
         self._log("正在获取密钥...")
+        self._key_clear()
         threading.Thread(target=self._get_key_thread, daemon=True).start()
 
+    def _key_clear(self):
+        self.key_output.config(state=tk.NORMAL)
+        self.key_output.delete("1.0", tk.END)
+        self.key_output.config(state=tk.DISABLED)
+
     def _get_key_thread(self):
-        """管理员权限下直接用 subprocess，读取实时输出并在 GUI 显示"""
+        """管理员权限 + chcp 65001 确保 UTF-8 + CREATE_NO_WINDOW 无黑框"""
         try:
-            # 找 node 和脚本
             import shutil
             node = os.path.join(RUNTIME, "node.exe")
             if not os.path.exists(node):
@@ -178,20 +199,21 @@ class App:
             if not node or not os.path.exists(js):
                 raise RuntimeError("找不到运行时")
 
-            # 清除旧状态
             sf = os.path.join(DATA_DIR, "key_status.txt")
             for f in [sf, KEY_FILE]:
                 if os.path.exists(f): os.remove(f)
 
-            self.root.after(0, lambda: self.key_status_var.set("等待微信关闭..."))
-            self.root.after(0, lambda: self._log("请关闭微信，然后打开微信并登录"))
+            self.root.after(0, lambda: self._key_append("=== 开始获取密钥 ==="))
+            self.root.after(0, lambda: self.key_status_var.set("请关闭微信后重新打开并登录"))
 
-            # 直接启动 node（管理员权限，无需 ShellExecuteW）
+            # CREATE_NO_WINDOW 隐藏黑框；encoding=utf-8 + replace 处理中文
+            CREATE_NO_WINDOW = 0x08000000
             proc = subprocess.Popen(
                 [node, js, DATA_DIR],
                 cwd=SCRIPTS,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
+                creationflags=CREATE_NO_WINDOW,
             )
 
             smap = {"started": "已启动", "dll_found": "找到 DLL",
@@ -202,27 +224,23 @@ class App:
                     "dll_not_found": "找不到 wx_key.dll", "hook_failed": "Hook 失败",
                     "timeout_poll": "超时"}
 
-            # 读取输出 + 轮询密钥文件
             for _ in range(180):
-                # 读一行输出
                 line = proc.stdout.readline()
                 if line:
                     line = line.strip()
                     if line:
-                        self.root.after(0, lambda t=line: self.key_status_var.set(t[:60]))
-                        self.root.after(0, lambda t=line: self._log(t[:100]))
-                        # 检查状态文件
+                        self.root.after(0, lambda t=line: self._key_append(t))
                         for k, v in smap.items():
                             if k in line:
                                 self.root.after(0, lambda m=v: self.key_status_var.set(m))
                                 break
 
-                # 检查是否已有密钥
                 if os.path.exists(KEY_FILE):
                     k = open(KEY_FILE).read().strip()
                     if len(k) == 64:
                         self.root.after(0, self._refresh_key_status)
-                        self.root.after(0, lambda: self._log("密钥获取成功"))
+                        self.root.after(0, lambda: self._key_append(f"=== 密钥获取成功: {k[:16]}... ==="))
+                        self.root.after(0, lambda: self._log(f"密钥获取成功: {k[:16]}..."))
                         self.root.after(0, lambda: messagebox.showinfo("成功",
                             f"密钥已保存到:\n{KEY_FILE}\n\n{k[:16]}..."))
                         try: proc.terminate()
@@ -230,19 +248,19 @@ class App:
                         return
 
                 if proc.poll() is not None:
+                    self.root.after(0, lambda: self._key_append("=== 进程已退出 ==="))
                     break
-                # 不 sleep——readline 本身阻塞
 
-            # 超时
             try: proc.terminate()
             except Exception: pass
             raise RuntimeError("获取密钥超时（180s），请确认微信已登录")
 
         except Exception as e:
+            self.root.after(0, lambda: self._key_append(f"错误: {e}"))
+            self.root.after(0, lambda: self.key_status_var.set("未获取密钥"))
             self.root.after(0, lambda: self._log(f"获取失败: {e}"))
-            self.root.after(0, lambda: self.key_status_var.set("❌ 未获取密钥"))
             self.root.after(0, lambda: messagebox.showerror("获取失败",
-                f"{e}\n\n请确保:\n1. 以管理员身份运行本程序\n2. 先关闭微信再重新打开并登录"))
+                f"{e}\n\n请以管理员身份运行，先关闭微信再重新打开登录"))
         finally:
             self.root.after(0, lambda: self.key_btn.config(state=tk.NORMAL))
 
