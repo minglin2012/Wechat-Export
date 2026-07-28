@@ -1,28 +1,25 @@
 # 微信聊天记录导出工具 v3.0
 
-一键导出微信 4.x 全部聊天记录。支持 HTML / CSV / Excel / PDF / TXT / JSON。
+一键导出微信聊天记录。支持 HTML / CSV / Excel / PDF / TXT / JSON。
+
+**已测试支持版本：微信 4.1.1.54（Windows）**
+
+## 截图
+
+| 获取密钥 | 选择会话 | 导出记录 |
+|---|---|---|
+| ![获取密钥](examples/获取密钥.png) | ![打开会话](examples/打开会话.png) | ![导出记录](examples/导出记录.png) |
 
 ## 快速开始
 
 ```bash
-cd d:\programming\wechat_export
+# 图形界面（推荐）
+python gui.py
 
-# 1. 安装 Python 依赖（仅首次）
-pip install openpyxl fpdf2
-
-# 2. 获取密钥（需要关闭→重启微信）
-python export.py key
-
-# 3. 预览所有会话
-python export.py list --data-dir=D:\Users\Lenovo\Documents\xwechat_files
-
-# 4. 编辑 export_config.json 配置过滤规则
-
-# 5. 导出全部
-python export.py export --data-dir=D:\Users\Lenovo\Documents\xwechat_files
-
-# 6. 或只导出特定联系人
-python export.py export --whitelist "张三,李四" --images
+# 或命令行模式
+python export.py key                              # 1. 获取密钥
+python export.py list --data-dir=<微信数据目录>    # 2. 预览会话
+python export.py export --data-dir=<微信数据目录>  # 3. 导出全部
 ```
 
 ## 子命令
@@ -98,7 +95,7 @@ python build.py
 推送 tag 或手动触发 Workflow 即可自动构建 + 发布 Release。
 
 ```bash
-git tag v1.0.0
+git tag v3.0.0
 git push --tags
 ```
 
