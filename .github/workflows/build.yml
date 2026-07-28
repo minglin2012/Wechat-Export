@@ -83,9 +83,9 @@ jobs:
           name: WeChatExport
           path: WeChatExport.zip
 
-      # GitHub Release（仅 tag 推送时）
+      # GitHub Release (tag push or manual dispatch)
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
         with:
           files: WeChatExport.zip
