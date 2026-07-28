@@ -28,19 +28,12 @@ jobs:
         working-directory: scripts
         run: npm install
 
-      # 提取 Electron 运行时
+      # 提取 Electron 运行时（完整 dist 目录）
       - name: Copy Electron runtime
         shell: pwsh
         run: |
-          $src = "scripts/node_modules/electron/dist"
-          New-Item -ItemType Directory -Force electron/locales | Out-Null
-          @("electron.exe","chrome_100_percent.pak","chrome_200_percent.pak","resources.pak",
-            "icudtl.dat","snapshot_blob.bin","v8_context_snapshot.bin","vk_swiftshader_icd.json",
-            "d3dcompiler_47.dll","ffmpeg.dll","libEGL.dll","libGLESv2.dll",
-            "vk_swiftshader.dll","vulkan-1.dll") | % {
-            Copy-Item "$src/$_" electron/ -ErrorAction SilentlyContinue
-          }
-          Copy-Item "$src/locales/en-US.pak","$src/locales/zh-CN.pak" electron/locales/ -ErrorAction SilentlyContinue
+          Remove-Item electron -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item scripts/node_modules/electron/dist electron -Recurse
           Write-Output "Electron: $([math]::Round((Get-ChildItem electron -Recurse | Measure-Object Length -Sum).Sum/1MB)) MB"
 
       # Node.js 运行时（用于密钥捕获）

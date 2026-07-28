@@ -39,27 +39,13 @@ def setup_electron():
         return
 
     scripts = os.path.join(HERE, "scripts")
-    # npm install electron
-    run(["npm", "install"], cwd=scripts, shell=True)  # devDependencies includes electron@24.14.0
+    run(["npm", "install"], cwd=scripts, shell=True)
 
-    # 复制 electron 核心文件
+    # 复制整个 electron dist 目录
     src = os.path.join(scripts, "node_modules", "electron", "dist")
-    os.makedirs(os.path.join(dest, "locales"), exist_ok=True)
-
-    files = ["electron.exe", "chrome_100_percent.pak", "chrome_200_percent.pak",
-             "resources.pak", "icudtl.dat", "snapshot_blob.bin",
-             "v8_context_snapshot.bin", "vk_swiftshader_icd.json",
-             "d3dcompiler_47.dll", "ffmpeg.dll", "libEGL.dll", "libGLESv2.dll",
-             "vk_swiftshader.dll", "vulkan-1.dll"]
-    for f in files:
-        s = os.path.join(src, f)
-        if os.path.exists(s):
-            shutil.copy2(s, os.path.join(dest, f))
-
-    for loc in ["en-US.pak", "zh-CN.pak"]:
-        s = os.path.join(src, "locales", loc)
-        if os.path.exists(s):
-            shutil.copy2(s, os.path.join(dest, "locales", loc))
+    if os.path.exists(dest):
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest)
 
     sz = sum(os.path.getsize(os.path.join(dp, fn))
              for dp, _, fns in os.walk(dest) for fn in fns)
