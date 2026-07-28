@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""构建发布包 —— PyInstaller 打包为独立目录
-本地:  python build.py       (需先确保 electron/, runtime/node.exe 等已就位)
-CI:    由 GitHub Actions 调用  (依赖已自动下载)
-"""
+"""Build release package via PyInstaller"""
 
-import os, sys, shutil, subprocess, glob
+import os, sys, shutil, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(HERE, "dist", "WeChatExport")
@@ -19,46 +16,39 @@ def run(cmd, **kw):
 def check_file(path, desc):
     if os.path.exists(path):
         print(f"  [OK] {desc}")
+        return True
     else:
         print(f"  [MISSING] {desc} -> {path}")
         return False
-    return True
 
 
 def main():
     print("=" * 56)
-    print("  微信聊天记录导出工具 - 构建发布包")
+    print("  WeChat Export Tool - Build")
     print("=" * 56)
 
-    # 预检关键文件
-    print("\n[0] 检查依赖...")
+    print("\n[0] Check dependencies...")
     ok = True
     ok &= check_file(os.path.join(HERE, "electron", "electron.exe"), "electron.exe")
     ok &= check_file(os.path.join(HERE, "runtime", "node.exe"), "runtime/node.exe")
     ok &= check_file(os.path.join(HERE, "runtime", "WCDB.dll"), "WCDB.dll")
     ok &= check_file(os.path.join(HERE, "scripts", "node_modules", "koffi"), "koffi")
     ok &= check_file(os.path.join(HERE, "scripts", "node_modules", "fzstd"), "fzstd")
-    # ffmpeg 可选
     ffmpeg = os.path.join(HERE, "resources", "bin", "ffmpeg.exe")
     if not os.path.exists(ffmpeg):
-        print("  [OPT] ffmpeg.exe (HEVC 图片解码备选，不影响基本导出)")
+        print("  [OPT] ffmpeg.exe (not required for basic export)")
     if not ok:
-        print("\n  [!] 缺少依赖，请先运行 CI 准备步骤或手动下载")
-        print("  本地开发: 手动复制 electron/ runtime/node.exe 等文件")
-        print("  CI 构建: .github/workflows/build.yml 自动下载")
+        print("\n  [!] Missing dependencies. Run setup_deps.py first.")
         sys.exit(1)
 
-    # 清理（保留 dist 由 PyInstaller 自动处理）
     for d in ["build"]:
         p = os.path.join(HERE, d)
         if os.path.exists(p):
             shutil.rmtree(p)
-    # dist 只删目标目录
     if os.path.exists(DIST):
         shutil.rmtree(DIST)
 
-    # PyInstaller
-    print("\n[1] PyInstaller 打包...")
+    print("\n[1] PyInstaller...")
     sep = ";" if sys.platform == "win32" else ":"
     run([
         sys.executable, "-m", "PyInstaller",
@@ -78,8 +68,7 @@ def main():
         os.path.join(HERE, "export.py"),
     ], cwd=HERE)
 
-    # 启动器（ASCII 编码，避免 CMD 中文乱码）
-    print("\n[2] 创建启动器...")
+    print("\n[2] Create launchers...")
     bat = ("@echo off\r\nchcp 65001 >nul\r\n"
            "title WeChat Export\r\n\r\n"
            "echo   WeChat Export Tool v3.0\r\n"
@@ -98,18 +87,16 @@ def main():
     with open(os.path.join(DIST, "启动.bat"), "w", encoding="ascii") as f:
         f.write(bat)
 
-    # GUI 快捷启动
     with open(os.path.join(DIST, "启动GUI.bat"), "w", encoding="ascii") as f:
         f.write("@echo off\r\nchcp 65001 >nul\r\nstart \"\" \"WeChatExport.exe\"\r\n")
 
-    # 大小
     total = 0
     for dp, dn, fns in os.walk(DIST):
         for fn in fns:
             try: total += os.path.getsize(os.path.join(dp, fn))
             except Exception: pass
 
-    print(f"\n  完成! 输出: {DIST}  ({total // 1024 // 1024} MB)")
+    print(f"\n  Done! Output: {DIST}  ({total // 1024 // 1024} MB)")
     print(f"  {os.path.join(DIST, '启动.bat')}")
 
 
